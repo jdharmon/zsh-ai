@@ -4,16 +4,18 @@
 
 # Custom widget to intercept Enter key
 _zsh_ai_accept_line() {
-    # Check if the line starts with "# " and handle multiline input
-    if [[ "$BUFFER" =~ ^'# ' ]]; then
+    # Check if the line starts with "# " or "? " and handle multiline input
+    if [[ "$BUFFER" =~ ^'# ' ]] || [[ "${BUFFER:0:2}" == '? ' ]]; then
         # Check if buffer contains newlines (multiline command)
         if [[ "$BUFFER" == *$'\n'* ]]; then
             # Multiline command detected - execute normally without AI processing
             zle .accept-line
             return
         fi
-        
-        # Extract the query (remove the "# " prefix)
+
+        local prefix="${BUFFER:0:2}"
+
+        # Extract the query (remove the 2-char prefix)
         local query="${BUFFER:2}"
         
         # Add a loading indicator with animation
@@ -64,8 +66,12 @@ _zsh_ai_accept_line() {
             fi
             echo ""  # Extra line for readability
 
-            # Restore original buffer so user can see what query failed
-            BUFFER="$saved_buffer"
+            # Restore original buffer (clear for "? " to avoid ZSH glob expansion on retry)
+            if [[ "$prefix" == '? ' ]]; then
+                BUFFER=""
+            else
+                BUFFER="$saved_buffer"
+            fi
             CURSOR=$#BUFFER
 
             # Sleep briefly to ensure error is visible before prompt redraws

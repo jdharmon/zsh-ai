@@ -432,6 +432,107 @@ test_handles_commands_with_special_characters() {
     teardown_test_env
 }
 
+test_ai_commands_starting_with_question_are_processed() {
+    setup_test_env
+    export ZSH_AI_PROVIDER="anthropic"
+    export ANTHROPIC_API_KEY="test-key"
+
+    _zsh_ai_query() {
+        echo "ls -la"
+    }
+
+    mock_command "kill" "" 1
+
+    mktemp() {
+        echo "/tmp/test.tmp"
+    }
+    mock_command "cat" "ls -la" 0
+    mock_command "rm" "" 0
+
+    local RESET_PROMPT_CALLED=0
+    zle() {
+        case "$1" in
+            "reset-prompt")
+                RESET_PROMPT_CALLED=1
+                ;;
+        esac
+    }
+
+    BUFFER="? list all files"
+    CURSOR=0
+
+    _zsh_ai_accept_line
+
+    assert_equals "$BUFFER" "ls -la"
+    assert_equals "$CURSOR" "6"
+    assert_equals "$RESET_PROMPT_CALLED" "1"
+
+    teardown_test_env
+}
+
+test_multiline_question_commands_execute_without_processing() {
+    setup_test_env
+    export ZSH_AI_PROVIDER="anthropic"
+    export ANTHROPIC_API_KEY="test-key"
+
+    local ACCEPT_LINE_CALLED=0
+    zle() {
+        case "$1" in
+            ".accept-line")
+                ACCEPT_LINE_CALLED=1
+                ;;
+        esac
+    }
+
+    BUFFER="? list files
+and show details"
+    _zsh_ai_accept_line
+
+    assert_equals "$ACCEPT_LINE_CALLED" "1"
+
+    teardown_test_env
+}
+
+test_question_prefix_buffer_cleared_on_error() {
+    setup_test_env
+    export ZSH_AI_PROVIDER="anthropic"
+    export ANTHROPIC_API_KEY="test-key"
+
+    _zsh_ai_query() {
+        echo "Error: API connection failed"
+    }
+
+    mock_command "kill" "" 1
+
+    mktemp() {
+        echo "/tmp/test.tmp"
+    }
+    mock_command "cat" "Error: API connection failed" 0
+    mock_command "rm" "" 0
+
+    local printed_output=""
+    print() {
+        printed_output="$printed_output$@\n"
+    }
+
+    zle() {
+        case "$1" in
+            "reset-prompt")
+                ;;
+        esac
+    }
+
+    BUFFER="? invalid query"
+
+    _zsh_ai_accept_line
+
+    # Buffer must be cleared (not restored) to avoid ZSH glob expansion
+    assert_equals "$BUFFER" ""
+    assert_contains "$printed_output" "Failed to generate command"
+
+    teardown_test_env
+}
+
 # Run tests
 echo "Running widget tests..."
 test_widget_initialization_registers_precmd_hook && echo "✓ Widget initialization registers precmd hook"
@@ -445,3 +546,6 @@ test_preserves_original_buffer_during_animation && echo "✓ Preserves original 
 test_handles_empty_api_response && echo "✓ Handles empty API response"
 test_uses_temporary_file_for_api_response && echo "✓ Uses temporary file for API response"
 test_handles_commands_with_special_characters && echo "✓ Handles commands with special characters"
+test_ai_commands_starting_with_question_are_processed && echo "✓ AI commands starting with ? are processed"
+test_multiline_question_commands_execute_without_processing && echo "✓ Multiline ? commands execute without processing"
+test_question_prefix_buffer_cleared_on_error && echo "✓ ? prefix buffer cleared on error (avoids glob expansion)"
