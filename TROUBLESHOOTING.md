@@ -31,6 +31,23 @@ brew install jq
 sudo apt-get install jq
 ```
 
+### `??` shows no output or explanation
+
+If `??` produces no explanation, the most likely causes are:
+
+1. **No previous command recorded** — `??` relies on the `preexec` hook tracking the last command. This hook is registered on the first prompt after the plugin loads. If you type `??` before running any other command, there's nothing to explain.
+
+2. **API error** — Same as any other trigger; check your API key and provider config.
+
+### `??` doesn't include command output
+
+Output capture is off by default. Enable it with:
+```bash
+export ZSH_AI_CAPTURE_OUTPUT=1
+```
+
+Note: this tees all terminal output through a temp file. Interactive programs (vim, less, fzf) may behave unexpectedly with capture enabled.
+
 ## Need More Help?
 
 If you're still experiencing issues:

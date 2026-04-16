@@ -2,8 +2,99 @@
 
 # ZLE widget and key binding for zsh-ai
 
+# State variables populated by preexec/precmd hooks
+_ZSH_AI_LAST_CMD=""
+_ZSH_AI_LAST_EXIT=0
+_ZSH_AI_LAST_OUTPUT=""
+_ZSH_AI_PREEXEC_RUNNING=0
+
+# preexec: record command and optionally start output capture
+_zsh_ai_preexec() {
+    _ZSH_AI_LAST_CMD="$1"
+    _ZSH_AI_PREEXEC_RUNNING=1
+    if [[ "${ZSH_AI_CAPTURE_OUTPUT:-0}" == "1" ]]; then
+        _ZSH_AI_CAPTURE_FILE=$(mktemp)
+        exec {_ZSH_AI_STDOUT_FD}>&1 {_ZSH_AI_STDERR_FD}>&2
+        exec 1> >(tee -a "$_ZSH_AI_CAPTURE_FILE") 2>&1
+    fi
+}
+
+# precmd: save exit code and finish output capture when a real command ran
+_zsh_ai_precmd() {
+    local last_exit=$?
+    if [[ "$_ZSH_AI_PREEXEC_RUNNING" == "1" ]]; then
+        _ZSH_AI_LAST_EXIT=$last_exit
+        _ZSH_AI_PREEXEC_RUNNING=0
+        if [[ -n "${_ZSH_AI_CAPTURE_FILE:-}" ]]; then
+            exec 1>&$_ZSH_AI_STDOUT_FD 2>&$_ZSH_AI_STDERR_FD
+            exec {_ZSH_AI_STDOUT_FD}>&- {_ZSH_AI_STDERR_FD}>&-
+            _ZSH_AI_LAST_OUTPUT=$(tail -50 "$_ZSH_AI_CAPTURE_FILE" 2>/dev/null)
+            rm -f "$_ZSH_AI_CAPTURE_FILE"
+            _ZSH_AI_CAPTURE_FILE=""
+        fi
+    fi
+}
+
 # Custom widget to intercept Enter key
 _zsh_ai_accept_line() {
+    # Check for ?? trigger (explain/fix last command)
+    if [[ "$BUFFER" == '??' ]] || [[ "${BUFFER:0:3}" == '?? ' ]]; then
+        local user_query=""
+        [[ "${BUFFER:0:3}" == '?? ' ]] && user_query="${BUFFER:3}"
+
+        local saved_buffer="$BUFFER"
+        local dots=("⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏")
+        local frame=0
+        local tmpfile=$(mktemp)
+        setopt local_options no_monitor no_notify
+
+        (_zsh_ai_execute_explain "$_ZSH_AI_LAST_CMD" "$_ZSH_AI_LAST_EXIT" "$_ZSH_AI_LAST_OUTPUT" "$user_query" > "$tmpfile" 2>/dev/null) &
+        local pid=$!
+
+        while kill -0 $pid 2>/dev/null; do
+            BUFFER="$saved_buffer ${dots[$((frame % ${#dots[@]}))]}"
+            zle redisplay
+            ((frame++))
+            zle -R && sleep 0.1
+        done
+
+        local response=$(cat "$tmpfile")
+        rm -f "$tmpfile"
+
+        if [[ -z "$response" ]] || [[ "$response" == "Error:"* ]]; then
+            echo ""
+            print -P "%F{red}❌ Failed to get explanation%f"
+            [[ -n "$response" ]] && print -P "%F{red}$response%f"
+            echo ""
+            BUFFER=""
+            CURSOR=0
+        elif [[ "$response" == 'FIX: '* ]]; then
+            local rest="${response#FIX: }"
+            local fixed_cmd explanation
+            if [[ "$rest" == *' /// '* ]]; then
+                fixed_cmd="${rest%% /// *}"
+                explanation="${rest#* /// }"
+            else
+                fixed_cmd="$rest"
+                explanation=""
+            fi
+            echo ""
+            [[ -n "$explanation" ]] && print -P "%F{cyan}${explanation}%f"
+            echo ""
+            BUFFER="$fixed_cmd"
+            CURSOR=$#BUFFER
+        else
+            echo ""
+            print -P "%F{cyan}${response}%f"
+            echo ""
+            BUFFER=""
+            CURSOR=0
+        fi
+
+        zle reset-prompt
+        return
+    fi
+
     # Check if the line starts with "# " or "? " and handle multiline input
     if [[ "$BUFFER" =~ ^'# ' ]] || [[ "${BUFFER:0:2}" == '? ' ]]; then
         # Check if buffer contains newlines (multiline command)
@@ -92,6 +183,8 @@ _zsh_ai_accept_line() {
 _zsh_ai_init_widget() {
     _zsh_ai_do_init() {
         zle -N accept-line _zsh_ai_accept_line
+        add-zsh-hook preexec _zsh_ai_preexec
+        add-zsh-hook precmd _zsh_ai_precmd
         add-zsh-hook -d precmd _zsh_ai_do_init
     }
     autoload -Uz add-zsh-hook

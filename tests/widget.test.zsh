@@ -432,6 +432,185 @@ test_handles_commands_with_special_characters() {
     teardown_test_env
 }
 
+test_double_question_replaces_buffer_with_fix() {
+    setup_test_env
+    export ZSH_AI_PROVIDER="anthropic"
+    export ANTHROPIC_API_KEY="test-key"
+
+    _ZSH_AI_LAST_CMD="git pussh origin main"
+    _ZSH_AI_LAST_EXIT=128
+    _ZSH_AI_LAST_OUTPUT=""
+
+    mock_command "kill" "" 1
+
+    mktemp() { echo "/tmp/test.tmp" }
+    mock_command "cat" 'FIX: git push origin main /// You had a typo: "pussh" should be "push".' 0
+    mock_command "rm" "" 0
+
+    local RESET_PROMPT_CALLED=0
+    zle() {
+        case "$1" in
+            "reset-prompt") RESET_PROMPT_CALLED=1 ;;
+        esac
+    }
+
+    BUFFER="??"
+    CURSOR=0
+
+    _zsh_ai_accept_line
+
+    assert_equals "$BUFFER" "git push origin main"
+    assert_equals "$CURSOR" "20"
+    assert_equals "$RESET_PROMPT_CALLED" "1"
+
+    teardown_test_env
+}
+
+test_double_question_with_query_processes_explanation() {
+    setup_test_env
+    export ZSH_AI_PROVIDER="anthropic"
+    export ANTHROPIC_API_KEY="test-key"
+
+    _ZSH_AI_LAST_CMD="ls /nonexistent"
+    _ZSH_AI_LAST_EXIT=1
+    _ZSH_AI_LAST_OUTPUT=""
+
+    mock_command "kill" "" 1
+
+    mktemp() { echo "/tmp/test.tmp" }
+    mock_command "cat" "The directory /nonexistent does not exist on this system." 0
+    mock_command "rm" "" 0
+
+    local printed_output=""
+    print() { printed_output="$printed_output$@\n" }
+
+    zle() {
+        case "$1" in
+            "reset-prompt") ;;
+        esac
+    }
+
+    BUFFER="?? why did this fail"
+    CURSOR=0
+
+    _zsh_ai_accept_line
+
+    assert_equals "$BUFFER" ""
+    assert_contains "$printed_output" "does not exist"
+
+    teardown_test_env
+}
+
+test_double_question_clears_buffer_when_no_fix() {
+    setup_test_env
+    export ZSH_AI_PROVIDER="anthropic"
+    export ANTHROPIC_API_KEY="test-key"
+
+    _ZSH_AI_LAST_CMD="rm /etc/passwd"
+    _ZSH_AI_LAST_EXIT=1
+    _ZSH_AI_LAST_OUTPUT=""
+
+    mock_command "kill" "" 1
+
+    mktemp() { echo "/tmp/test.tmp" }
+    mock_command "cat" "Permission denied: you do not have write access to /etc/passwd." 0
+    mock_command "rm" "" 0
+
+    zle() {
+        case "$1" in
+            "reset-prompt") ;;
+        esac
+    }
+
+    BUFFER="??"
+
+    _zsh_ai_accept_line
+
+    assert_equals "$BUFFER" ""
+
+    teardown_test_env
+}
+
+test_double_question_handles_no_previous_command() {
+    setup_test_env
+    export ZSH_AI_PROVIDER="anthropic"
+    export ANTHROPIC_API_KEY="test-key"
+
+    _ZSH_AI_LAST_CMD=""
+    _ZSH_AI_LAST_EXIT=0
+    _ZSH_AI_LAST_OUTPUT=""
+
+    mock_command "kill" "" 1
+
+    mktemp() { echo "/tmp/test.tmp" }
+    mock_command "cat" "Error: No previous command found" 0
+    mock_command "rm" "" 0
+
+    local printed_output=""
+    print() { printed_output="$printed_output$@\n" }
+
+    zle() {
+        case "$1" in
+            "reset-prompt") ;;
+        esac
+    }
+
+    BUFFER="??"
+
+    _zsh_ai_accept_line
+
+    assert_equals "$BUFFER" ""
+    assert_contains "$printed_output" "Failed to get explanation"
+
+    teardown_test_env
+}
+
+test_preexec_records_last_command() {
+    setup_test_env
+
+    _ZSH_AI_LAST_CMD=""
+    _ZSH_AI_PREEXEC_RUNNING=0
+
+    _zsh_ai_preexec "git status"
+
+    assert_equals "$_ZSH_AI_LAST_CMD" "git status"
+    assert_equals "$_ZSH_AI_PREEXEC_RUNNING" "1"
+
+    teardown_test_env
+}
+
+test_precmd_saves_exit_code_when_preexec_ran() {
+    setup_test_env
+
+    _ZSH_AI_PREEXEC_RUNNING=1
+    _ZSH_AI_LAST_EXIT=0
+
+    # Simulate a failed command by having $? = 1 via a subshell trick
+    # We call _zsh_ai_precmd after a failing command
+    (exit 42)
+    _zsh_ai_precmd
+
+    assert_equals "$_ZSH_AI_LAST_EXIT" "42"
+    assert_equals "$_ZSH_AI_PREEXEC_RUNNING" "0"
+
+    teardown_test_env
+}
+
+test_precmd_does_not_update_exit_code_without_preexec() {
+    setup_test_env
+
+    _ZSH_AI_PREEXEC_RUNNING=0
+    _ZSH_AI_LAST_EXIT=99
+
+    (exit 1)
+    _zsh_ai_precmd
+
+    # Should not update since no preexec ran
+    assert_equals "$_ZSH_AI_LAST_EXIT" "99"
+
+    teardown_test_env
+}
+
 test_ai_commands_starting_with_question_are_processed() {
     setup_test_env
     export ZSH_AI_PROVIDER="anthropic"
@@ -549,3 +728,10 @@ test_handles_commands_with_special_characters && echo "✓ Handles commands with
 test_ai_commands_starting_with_question_are_processed && echo "✓ AI commands starting with ? are processed"
 test_multiline_question_commands_execute_without_processing && echo "✓ Multiline ? commands execute without processing"
 test_question_prefix_buffer_cleared_on_error && echo "✓ ? prefix buffer cleared on error (avoids glob expansion)"
+test_double_question_replaces_buffer_with_fix && echo "✓ ?? replaces buffer with fixed command"
+test_double_question_with_query_processes_explanation && echo "✓ ?? with query prints explanation"
+test_double_question_clears_buffer_when_no_fix && echo "✓ ?? clears buffer when no fix available"
+test_double_question_handles_no_previous_command && echo "✓ ?? handles missing previous command"
+test_preexec_records_last_command && echo "✓ preexec records last command"
+test_precmd_saves_exit_code_when_preexec_ran && echo "✓ precmd saves exit code when preexec ran"
+test_precmd_does_not_update_exit_code_without_preexec && echo "✓ precmd skips update when no preexec ran"

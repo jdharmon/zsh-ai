@@ -210,9 +210,43 @@ export ZSH_AI_GROK_URL="https://api.x.ai/v1/chat/completions"
 # Qwen
 export ZSH_AI_QWEN_MODEL="qwen3-max"
 export ZSH_AI_QWEN_URL="https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+
+# ?? explain/fix trigger
+export ZSH_AI_CAPTURE_OUTPUT=0  # Set to 1 to include command output in ?? context
 ```
 
 ## Advanced Configuration
+
+### Explain & Fix (`??`)
+
+The `??` trigger sends your last command, its exit code, and an optional question to the AI. If the error was a user mistake (typo, wrong flag, bad syntax), the corrected command replaces your buffer. Otherwise, an explanation is printed.
+
+```bash
+# After any command, type ?? to explain or fix it
+$ git pussh origin main
+$ ??
+# → prints explanation, buffer becomes: git push origin main
+
+# Add a question for more context
+$ tar -xvf backup.tar.gz
+$ ?? what flags did I use?
+```
+
+**Output capture (optional)**
+
+By default, `??` only sends the command and exit code to the AI—not the actual output. To also include the command's output (stdout and stderr), enable capture mode:
+
+```bash
+export ZSH_AI_CAPTURE_OUTPUT=1
+```
+
+When enabled, every command's output is teed through a temp file. The last 50 lines are included in the `??` context. This adds minor overhead to every command, so it is off by default.
+
+Add to `~/.zshrc` to make it permanent:
+
+```bash
+export ZSH_AI_CAPTURE_OUTPUT=1
+```
 
 ### Custom Prompt Extensions
 

@@ -4,15 +4,54 @@
 
 # Function to get the standardized system prompt for all providers
 _zsh_ai_get_system_prompt() {
+    # Allow callers to override the entire system prompt (used by explain mode)
+    if [[ -n "${_ZSH_AI_SYSTEM_PROMPT_OVERRIDE:-}" ]]; then
+        echo "$_ZSH_AI_SYSTEM_PROMPT_OVERRIDE"
+        return
+    fi
+
     local context="$1"
     local base_prompt="You are a zsh command generator. Generate syntactically correct zsh commands based on the user's natural language request.\n\nIMPORTANT RULES:\n1. Output ONLY the raw command - no explanations, no markdown, no backticks\n2. For arguments containing spaces or special characters, use single quotes\n3. Use double quotes only when variable expansion is needed\n4. Properly escape special characters within quotes\n\nExamples:\n- echo 'Hello World!' (spaces require quotes)\n- echo \"Current user: \$USER\" (variable expansion needs double quotes)\n- grep 'pattern with spaces' file.txt\n- find . -name '*.txt' (glob patterns in quotes)"
-    
+
     # Add custom prompt extension if provided
     if [[ -n "$ZSH_AI_PROMPT_EXTEND" ]]; then
         echo "${base_prompt}\n\n${ZSH_AI_PROMPT_EXTEND}\n\nContext:\n$context"
     else
         echo "${base_prompt}\n\nContext:\n$context"
     fi
+}
+
+# System prompt for the ?? explain/fix trigger
+_zsh_ai_get_explain_system_prompt() {
+    echo "You are a ZSH command analyzer. Given a command, its exit code, any captured output, and an optional user question, analyze what happened.\n\nRESPONSE FORMAT:\n- If the error is fixable by the user (typo, wrong flag, wrong argument, bad syntax): respond on a SINGLE LINE using exactly this format:\n  FIX: <corrected command> /// <brief explanation (1-2 sentences)>\n- For all other cases (permission denied, file not found, network error, successful command, ambiguous error): respond with a plain explanation only - no FIX: prefix, no /// separator.\n- No markdown formatting. No code fences. No backticks. Everything on one line."
+}
+
+# Execute an explain/fix query using the explain system prompt
+_zsh_ai_execute_explain() {
+    local last_cmd="$1"
+    local last_exit="$2"
+    local last_output="$3"
+    local user_query="$4"
+
+    if [[ -z "$last_cmd" ]]; then
+        echo "Error: No previous command found"
+        return 1
+    fi
+
+    # Build the message with actual newlines so JSON escaping handles them correctly
+    local message="Last command: ${last_cmd}"$'\n'"Exit code: ${last_exit}"
+    if [[ -n "$last_output" ]]; then
+        message="${message}"$'\n'"Output:"$'\n'"${last_output}"
+    fi
+    if [[ -n "$user_query" ]]; then
+        message="${message}"$'\n\n'"User question: ${user_query}"
+    fi
+
+    _ZSH_AI_SYSTEM_PROMPT_OVERRIDE=$(_zsh_ai_get_explain_system_prompt)
+    local response=$(_zsh_ai_query "$message")
+    unset _ZSH_AI_SYSTEM_PROMPT_OVERRIDE
+
+    echo "$response"
 }
 
 # Function to properly escape strings for JSON
