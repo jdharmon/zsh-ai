@@ -21,6 +21,22 @@ _zsh_ai_get_system_prompt() {
     fi
 }
 
+# System prompt for the ? general question trigger
+_zsh_ai_get_question_system_prompt() {
+    echo "You are a concise assistant answering questions in a terminal. Keep your response short enough to fit on one screen (under 30 lines). Use plain text only - no markdown formatting, no code fences unless showing a short snippet. Be direct and accurate."
+}
+
+# Execute a general question query using the question system prompt
+_zsh_ai_execute_question() {
+    local query="$1"
+
+    _ZSH_AI_SYSTEM_PROMPT_OVERRIDE=$(_zsh_ai_get_question_system_prompt)
+    local response=$(_zsh_ai_query "$query")
+    unset _ZSH_AI_SYSTEM_PROMPT_OVERRIDE
+
+    echo "$response"
+}
+
 # System prompt for the ?? explain/fix trigger
 _zsh_ai_get_explain_system_prompt() {
     echo "You are a ZSH command analyzer. Given a command, its exit code, any captured output, and an optional user question, analyze what happened.\n\nRESPONSE FORMAT:\n- If the error is fixable by the user (typo, wrong flag, wrong argument, bad syntax): respond on a SINGLE LINE using exactly this format:\n  FIX: <corrected command> /// <brief explanation (1-2 sentences)>\n- For all other cases (permission denied, file not found, network error, successful command, ambiguous error): respond with a plain explanation only - no FIX: prefix, no /// separator.\n- No markdown formatting. No code fences. No backticks. Everything on one line."

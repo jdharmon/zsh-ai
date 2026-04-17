@@ -95,8 +95,8 @@ _zsh_ai_accept_line() {
         return
     fi
 
-    # Check if the line starts with "# " or "? " and handle multiline input
-    if [[ "$BUFFER" =~ ^'# ' ]] || [[ "${BUFFER:0:2}" == '? ' ]]; then
+    # Check if the line starts with "# " (command generation trigger)
+    if [[ "$BUFFER" =~ ^'# ' ]]; then
         # Check if buffer contains newlines (multiline command)
         if [[ "$BUFFER" == *$'\n'* ]]; then
             # Multiline command detected - execute normally without AI processing
@@ -104,30 +104,28 @@ _zsh_ai_accept_line() {
             return
         fi
 
-        local prefix="${BUFFER:0:2}"
-
         # Extract the query (remove the 2-char prefix)
         local query="${BUFFER:2}"
-        
+
         # Add a loading indicator with animation
         local saved_buffer="$BUFFER"
-        
+
         # Animation frames - rotating dots
         local dots=("⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏")
-        
+
         local frame=0
-        
+
         # Create a temp file for the response
         local tmpfile=$(mktemp)
-        
+
         # Disable job control notifications
         setopt local_options no_monitor no_notify
-        
+
         # Start the API query in background using the shared function
         # Only redirect stdout to tmpfile, let stderr go to /dev/null to avoid mixing error output
         (_zsh_ai_execute_command "$query" > "$tmpfile" 2>/dev/null) &
         local pid=$!
-        
+
         # Animate while waiting
         while kill -0 $pid 2>/dev/null; do
             BUFFER="$saved_buffer ${dots[$((frame % ${#dots[@]}))]}"
@@ -136,12 +134,12 @@ _zsh_ai_accept_line() {
             # Use zsh's built-in sleep equivalent
             zle -R && sleep 0.1
         done
-        
+
         # Get the response
         local cmd=$(cat "$tmpfile")
         local exit_code=$?
         rm -f "$tmpfile"
-        
+
         if [[ -n "$cmd" ]] && [[ "$cmd" != "Error:"* ]] && [[ "$cmd" != "API Error:"* ]]; then
             # Simply replace the buffer with the generated command
             BUFFER="$cmd"
@@ -157,17 +155,72 @@ _zsh_ai_accept_line() {
             fi
             echo ""  # Extra line for readability
 
-            # Restore original buffer (clear for "? " to avoid ZSH glob expansion on retry)
-            if [[ "$prefix" == '? ' ]]; then
-                BUFFER=""
-            else
-                BUFFER="$saved_buffer"
-            fi
+            BUFFER="$saved_buffer"
             CURSOR=$#BUFFER
 
             # Sleep briefly to ensure error is visible before prompt redraws
             sleep 0.5
         fi
+
+        # Redraw the prompt
+        zle reset-prompt
+
+    # Check if the line starts with "? " (general question trigger)
+    elif [[ "${BUFFER:0:2}" == '? ' ]]; then
+        # Check if buffer contains newlines (multiline command)
+        if [[ "$BUFFER" == *$'\n'* ]]; then
+            # Multiline command detected - execute normally without AI processing
+            zle .accept-line
+            return
+        fi
+
+        # Extract the query (remove the 2-char prefix)
+        local query="${BUFFER:2}"
+
+        # Add a loading indicator with animation
+        local saved_buffer="$BUFFER"
+
+        # Animation frames - rotating dots
+        local dots=("⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏")
+
+        local frame=0
+
+        # Create a temp file for the response
+        local tmpfile=$(mktemp)
+
+        # Disable job control notifications
+        setopt local_options no_monitor no_notify
+
+        # Start the API query in background using the question function
+        (_zsh_ai_execute_question "$query" > "$tmpfile" 2>/dev/null) &
+        local pid=$!
+
+        # Animate while waiting
+        while kill -0 $pid 2>/dev/null; do
+            BUFFER="$saved_buffer ${dots[$((frame % ${#dots[@]}))]}"
+            zle redisplay
+            ((frame++))
+            # Use zsh's built-in sleep equivalent
+            zle -R && sleep 0.1
+        done
+
+        # Get the response
+        local answer=$(cat "$tmpfile")
+        rm -f "$tmpfile"
+
+        if [[ -z "$answer" ]] || [[ "$answer" == "Error:"* ]] || [[ "$answer" == "API Error:"* ]]; then
+            echo ""
+            print -P "%F{red}❌ Failed to get answer%f"
+            [[ -n "$answer" ]] && print -P "%F{red}$answer%f"
+            echo ""
+        else
+            echo ""
+            print -P "%F{cyan}${answer}%f"
+            echo ""
+        fi
+
+        BUFFER=""
+        CURSOR=0
 
         # Redraw the prompt
         zle reset-prompt

@@ -617,7 +617,7 @@ test_ai_commands_starting_with_question_are_processed() {
     export ANTHROPIC_API_KEY="test-key"
 
     _zsh_ai_query() {
-        echo "ls -la"
+        echo "A file lists directory contents."
     }
 
     mock_command "kill" "" 1
@@ -625,8 +625,13 @@ test_ai_commands_starting_with_question_are_processed() {
     mktemp() {
         echo "/tmp/test.tmp"
     }
-    mock_command "cat" "ls -la" 0
+    mock_command "cat" "A file lists directory contents." 0
     mock_command "rm" "" 0
+
+    local printed_output=""
+    print() {
+        printed_output="$printed_output$@\n"
+    }
 
     local RESET_PROMPT_CALLED=0
     zle() {
@@ -642,9 +647,11 @@ test_ai_commands_starting_with_question_are_processed() {
 
     _zsh_ai_accept_line
 
-    assert_equals "$BUFFER" "ls -la"
-    assert_equals "$CURSOR" "6"
+    # Buffer should be cleared (not replaced with a command)
+    assert_equals "$BUFFER" ""
+    assert_equals "$CURSOR" "0"
     assert_equals "$RESET_PROMPT_CALLED" "1"
+    assert_contains "$printed_output" "A file lists directory contents."
 
     teardown_test_env
 }
@@ -707,7 +714,7 @@ test_question_prefix_buffer_cleared_on_error() {
 
     # Buffer must be cleared (not restored) to avoid ZSH glob expansion
     assert_equals "$BUFFER" ""
-    assert_contains "$printed_output" "Failed to generate command"
+    assert_contains "$printed_output" "Failed to get answer"
 
     teardown_test_env
 }
