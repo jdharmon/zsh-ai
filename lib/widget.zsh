@@ -196,6 +196,12 @@ _zsh_ai_accept_line() {
 
         local frame=0
 
+        # Detect color support
+        local use_colors=0
+        local _n_colors
+        _n_colors=$(tput colors 2>/dev/null)
+        [[ -n "$_n_colors" ]] && [[ $_n_colors -ge 8 ]] && use_colors=1
+
         # Create a temp file for the response
         local tmpfile=$(mktemp)
 
@@ -203,7 +209,7 @@ _zsh_ai_accept_line() {
         setopt local_options no_monitor no_notify
 
         # Start the API query in background using the question function
-        (_zsh_ai_execute_question "$query" > "$tmpfile" 2>/dev/null) &
+        (_zsh_ai_execute_question "$query" "$use_colors" > "$tmpfile" 2>/dev/null) &
         local pid=$!
 
         # Animate while waiting
@@ -226,7 +232,7 @@ _zsh_ai_accept_line() {
             echo ""
         else
             echo ""
-            print -P "%F{cyan}${answer}%f"
+            print -- "$answer"
             echo ""
         fi
 

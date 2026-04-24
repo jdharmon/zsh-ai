@@ -23,16 +23,24 @@ _zsh_ai_get_system_prompt() {
 
 # System prompt for the ? general question trigger
 _zsh_ai_get_question_system_prompt() {
-    echo "You are a concise assistant answering questions in a terminal. Keep your response short enough to fit on one screen (under 30 lines). Use plain text only - no markdown formatting, no code fences unless showing a short snippet. Be direct and accurate."
+    local use_colors="${1:-0}"
+    if [[ "$use_colors" == "1" ]]; then
+        echo "You are a concise assistant answering questions in a terminal that supports ANSI colors. Keep your response short enough to fit on one screen (under 30 lines). Use ANSI escape codes directly in your output: the ESC character (ASCII 27) followed by [1m for bold, [0m to reset, [33m for yellow (notes/warnings), [36m for cyan (commands/code), [32m for green (values/examples). Use color sparingly to highlight key information. No markdown. No code fences. Be direct and accurate."
+    else
+        echo "You are a concise assistant answering questions in a terminal. Keep your response short enough to fit on one screen (under 30 lines). Use plain text only - no markdown formatting, no code fences unless showing a short snippet. Be direct and accurate."
+    fi
 }
 
 # Execute a general question query using the question system prompt
 _zsh_ai_execute_question() {
     local query="$1"
+    local use_colors="${2:-0}"
 
-    _ZSH_AI_SYSTEM_PROMPT_OVERRIDE=$(_zsh_ai_get_question_system_prompt)
+    _ZSH_AI_SYSTEM_PROMPT_OVERRIDE=$(_zsh_ai_get_question_system_prompt "$use_colors")
+    _ZSH_AI_PRESERVE_NEWLINES=1
     local response=$(_zsh_ai_query "$query")
     unset _ZSH_AI_SYSTEM_PROMPT_OVERRIDE
+    unset _ZSH_AI_PRESERVE_NEWLINES
 
     echo "$response"
 }
