@@ -7,30 +7,31 @@ _ZSH_AI_LAST_CMD=""
 _ZSH_AI_LAST_EXIT=0
 _ZSH_AI_LAST_OUTPUT=""
 _ZSH_AI_PREEXEC_RUNNING=0
+_ZSH_AI_TMUX_HISTORY_BEFORE=0
 
-# preexec: record command and optionally start output capture
+# preexec: record command and tmux history size
 _zsh_ai_preexec() {
     _ZSH_AI_LAST_CMD="$1"
     _ZSH_AI_PREEXEC_RUNNING=1
-    if [[ "${ZSH_AI_CAPTURE_OUTPUT:-0}" == "1" ]]; then
-        _ZSH_AI_CAPTURE_FILE=$(mktemp)
-        exec {_ZSH_AI_STDOUT_FD}>&1 {_ZSH_AI_STDERR_FD}>&2
-        exec 1> >(tee -a "$_ZSH_AI_CAPTURE_FILE") 2>&1
+    if [[ -n "$TMUX" ]]; then
+        _ZSH_AI_TMUX_HISTORY_BEFORE=$(tmux display-message -p '#{history_size}' 2>/dev/null)
     fi
 }
 
-# precmd: save exit code and finish output capture when a real command ran
+# precmd: save exit code and capture output via tmux pane buffer
 _zsh_ai_precmd() {
     local last_exit=$?
     if [[ "$_ZSH_AI_PREEXEC_RUNNING" == "1" ]]; then
         _ZSH_AI_LAST_EXIT=$last_exit
         _ZSH_AI_PREEXEC_RUNNING=0
-        if [[ -n "${_ZSH_AI_CAPTURE_FILE:-}" ]]; then
-            exec 1>&$_ZSH_AI_STDOUT_FD 2>&$_ZSH_AI_STDERR_FD
-            exec {_ZSH_AI_STDOUT_FD}>&- {_ZSH_AI_STDERR_FD}>&-
-            _ZSH_AI_LAST_OUTPUT=$(tail -50 "$_ZSH_AI_CAPTURE_FILE" 2>/dev/null)
-            rm -f "$_ZSH_AI_CAPTURE_FILE"
-            _ZSH_AI_CAPTURE_FILE=""
+        _ZSH_AI_LAST_OUTPUT=""
+        if [[ -n "$TMUX" ]]; then
+            local history_after
+            history_after=$(tmux display-message -p '#{history_size}' 2>/dev/null)
+            local pane_height
+            pane_height=$(tmux display-message -p '#{pane_height}' 2>/dev/null)
+            local new_lines=$(( history_after - _ZSH_AI_TMUX_HISTORY_BEFORE + pane_height ))
+            _ZSH_AI_LAST_OUTPUT=$(tmux capture-pane -p -S -${new_lines} 2>/dev/null | head -50)
         fi
     fi
 }
@@ -39,6 +40,16 @@ _zsh_ai_precmd() {
 _zsh_ai_accept_line() {
     # Check for ?? trigger (explain/fix last command)
     if [[ "$BUFFER" == '??' ]] || [[ "${BUFFER:0:3}" == '?? ' ]]; then
+        if [[ -z "$TMUX" ]]; then
+            echo ""
+            print -P "%F{yellow}?? requires tmux — run your shell inside a tmux session to use this feature.%f"
+            echo ""
+            BUFFER=""
+            CURSOR=0
+            zle reset-prompt
+            return
+        fi
+
         local user_query=""
         [[ "${BUFFER:0:3}" == '?? ' ]] && user_query="${BUFFER:3}"
 

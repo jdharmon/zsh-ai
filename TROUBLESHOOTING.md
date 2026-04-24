@@ -39,14 +39,9 @@ If `??` produces no explanation, the most likely causes are:
 
 2. **API error** — Same as any other trigger; check your API key and provider config.
 
-### `??` doesn't include command output
+### `??` doesn't work outside tmux
 
-Output capture is off by default. Enable it with:
-```bash
-export ZSH_AI_CAPTURE_OUTPUT=1
-```
-
-Note: this tees all terminal output through a temp file. Interactive programs (vim, less, fzf) may behave unexpectedly with capture enabled.
+`??` reads command output from the tmux pane buffer and requires a tmux session. Run your shell inside tmux to use this feature.
 
 ## Need More Help?
 

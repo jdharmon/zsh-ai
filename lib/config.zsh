@@ -18,10 +18,6 @@
 : ${ZSH_AI_MISTRAL_MODEL:="mistral-small-latest"}  # Default Mistral model
 : ${ZSH_AI_MISTRAL_URL:="https://api.mistral.ai/v1/chat/completions"}  # Default Mistral URL
 
-# Optional: Enable output capture for ?? explain trigger
-# ZSH_AI_CAPTURE_OUTPUT=1 - tee all command output to a temp file so ?? can include it
-: ${ZSH_AI_CAPTURE_OUTPUT:=0}
-
 # Optional: Extend the system prompt with custom instructions
 # ZSH_AI_PROMPT_EXTEND - Add custom instructions to the AI prompt without replacing the core prompt
 # Example: export ZSH_AI_PROMPT_EXTEND="Always prefer ripgrep (rg) over grep. Use modern CLI tools when available."
