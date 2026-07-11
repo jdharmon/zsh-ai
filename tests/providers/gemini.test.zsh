@@ -8,6 +8,7 @@ source "$PLUGIN_DIR/lib/utils.zsh"
 source "$PLUGIN_DIR/lib/context.zsh"
 source "$PLUGIN_DIR/lib/config.zsh"
 source "$PLUGIN_DIR/lib/providers/gemini.zsh"
+source "$PLUGIN_DIR/lib/agent.zsh"
 
 # Test functions
 
@@ -227,6 +228,32 @@ test_handles_response_with_escaped_newline_without_jq() {
     teardown_test_env
 }
 
+test_agent_query_returns_multiline_reply_with_block() {
+    setup_test_env
+    export GEMINI_API_KEY="test-api-key"
+
+    # Use the perl fallback for a deterministic parse (no real jq dependency).
+    mock_jq "false"
+
+    typeset -ga _zsh_ai_agent_roles=("user")
+    typeset -ga _zsh_ai_agent_texts=("count the files")
+
+    local mock_response='{"candidates":[{"content":{"parts":[{"text":"Let me check.\n```tool\nls -1 | wc -l\n```"}]}}]}'
+    mock_curl_response "$mock_response" 0
+
+    local output
+    output=$(_zsh_ai_agent_query_gemini)
+
+    # The raw reply is preserved: the fenced tool block and its command survive.
+    assert_contains "$output" '```tool'
+    assert_contains "$output" 'ls -1 | wc -l'
+    # And it stays multi-line (not collapsed like the single-shot path).
+    local line_count=$(printf "%s" "$output" | wc -l | tr -d ' ')
+    assert_greater_than "$line_count" "0"
+
+    teardown_test_env
+}
+
 # Run tests
 echo "Running gemini provider tests..."
 run_test "Default model configuration" test_default_model_configuration
@@ -241,4 +268,5 @@ run_test "Handles curl connection failure" test_handles_curl_connection_failure
 run_test "Handles empty response" test_handles_empty_response
 run_test "Handles response with escaped newline (with jq)" test_handles_response_with_escaped_newline_with_jq
 run_test "Handles response with escaped newline (without jq)" test_handles_response_with_escaped_newline_without_jq
+run_test "Agent query returns multi-line reply with tool block" test_agent_query_returns_multiline_reply_with_block
 finish_tests

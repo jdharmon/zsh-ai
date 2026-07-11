@@ -65,6 +65,18 @@ _zsh_ai_execute_command() {
 
 # Optional: Add a helper function for users who prefer explicit commands
 zsh-ai() {
+    # Agent mode: `zsh-ai --agent "task"` runs the agentic loop.
+    if [[ "$1" == "--agent" ]]; then
+        shift
+        if [[ $# -eq 0 ]]; then
+            echo "Usage: zsh-ai --agent \"your task\""
+            return 1
+        fi
+        _zsh_ai_agent_available || return 1
+        _zsh_ai_agent_loop "$*"
+        return $?
+    fi
+
     if [[ $# -eq 0 ]]; then
         echo "Usage: zsh-ai \"your natural language command\""
         echo "Example: zsh-ai \"find all python files modified today\""

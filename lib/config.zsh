@@ -24,6 +24,22 @@
 : ${ZSH_AI_COMMENT_HOOK:="true"}  # Set to false/off/no/0 to disable the inline trigger widget entirely
 : ${ZSH_AI_TRIGGER:="# "}  # Prompt prefix that triggers AI (e.g. ",," instead of "# ")
 
+# Agent mode configuration
+: ${ZSH_AI_AGENT_TRIGGER:="#! "}  # Inline prefix that launches the agent loop
+: ${ZSH_AI_AGENT_MAX_STEPS:=15}   # Max tool calls before the loop stops
+: ${ZSH_AI_AGENT_TIMEOUT:=30}     # Per-command timeout in seconds (best-effort)
+: ${ZSH_AI_AGENT_MAX_OUTPUT:=4096}  # Max bytes of command output fed back to the model
+
+# Return 0 if agent mode can run with the current configuration, 1 otherwise.
+# v1 supports Gemini only.
+_zsh_ai_agent_available() {
+    if [[ "$ZSH_AI_PROVIDER" != "gemini" ]]; then
+        echo "zsh-ai: agent mode currently supports the 'gemini' provider only (ZSH_AI_PROVIDER=$ZSH_AI_PROVIDER)." >&2
+        return 1
+    fi
+    return 0
+}
+
 # Return 0 if the inline trigger widget should be enabled, 1 otherwise
 _zsh_ai_comment_hook_enabled() {
     case "${ZSH_AI_COMMENT_HOOK:l}" in

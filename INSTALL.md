@@ -219,6 +219,35 @@ export ZSH_AI_COMMENT_HOOK="false"
 `ZSH_AI_COMMENT_HOOK` accepts `false`, `off`, `no`, `0`, or `disabled` (case
 insensitive) to turn the hook off; any other value keeps it on.
 
+## Agent Mode
+
+Agent mode runs commands in a loop to complete a task, asking you to approve each
+one. Launch it inline with `#! ` or with `zsh-ai --agent "..."`. It currently
+requires the Gemini provider:
+
+```bash
+export ZSH_AI_PROVIDER="gemini"
+export GEMINI_API_KEY="your-key-here"
+```
+
+```bash
+$ #! find the largest file under this directory and show its size
+$ zsh-ai --agent "run the test suite and summarize any failures"
+```
+
+Optional tuning:
+
+```bash
+export ZSH_AI_AGENT_TRIGGER="#! "    # inline prefix that launches the agent
+export ZSH_AI_AGENT_MAX_STEPS=15     # max commands before the loop stops
+export ZSH_AI_AGENT_TIMEOUT=30       # per-command timeout in seconds
+export ZSH_AI_AGENT_MAX_OUTPUT=4096  # max bytes of output fed back to the model
+```
+
+Each command runs in a fresh shell, so `cd`/environment changes do not persist
+between steps. Interactive programs (`vim`, `less`, `ssh`) can't be driven and
+will hit the timeout.
+
 ## Requirements
 
 - zsh 5.0+

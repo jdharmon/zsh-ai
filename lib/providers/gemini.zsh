@@ -99,3 +99,74 @@ EOF
         printf "%s" "$result"
     fi
 }
+
+# Multi-turn plain-text query for agent mode.
+#
+# Reads the conversation from the parallel arrays $_zsh_ai_agent_roles /
+# $_zsh_ai_agent_texts (roles "user"/"model"), sends them as Gemini contents
+# with the agent system prompt as systemInstruction, and returns the model's
+# RAW multi-line reply (the ```tool block must be preserved, so no single-line
+# cleanup here). Used by lib/agent.zsh; does not touch _zsh_ai_query_gemini.
+_zsh_ai_agent_query_gemini() {
+    local response
+
+    # Build the contents[] array from the history.
+    local contents=""
+    local i
+    for (( i = 1; i <= ${#_zsh_ai_agent_roles}; i++ )); do
+        local role="${_zsh_ai_agent_roles[i]}"
+        local text=$(_zsh_ai_escape_json "${_zsh_ai_agent_texts[i]}")
+        [[ -n "$contents" ]] && contents+=","
+        contents+="{\"role\":\"$role\",\"parts\":[{\"text\":\"$text\"}]}"
+    done
+
+    local system_prompt=$(_zsh_ai_agent_system_prompt)
+    local escaped_system_prompt=$(_zsh_ai_escape_json "$system_prompt")
+
+    local json_payload=$(cat <<EOF
+{
+    "contents": [ $contents ],
+    "systemInstruction": {
+        "parts": [ { "text": "$escaped_system_prompt" } ]
+    },
+    "generationConfig": {
+        "temperature": 0.2,
+        "maxOutputTokens": 2048
+    }
+}
+EOF
+)
+
+    response=$(curl -s "https://generativelanguage.googleapis.com/v1beta/models/${ZSH_AI_GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}" \
+        --header "content-type: application/json" \
+        --data "$json_payload" 2>&1)
+
+    if [[ $? -ne 0 ]]; then
+        echo "Error: Failed to connect to Gemini API"
+        return 1
+    fi
+
+    if command -v jq &> /dev/null; then
+        local result=$(printf "%s" "$response" | jq -r '[.candidates[0].content.parts[].text] | join("") // empty' 2>/dev/null)
+        if [[ -z "$result" ]]; then
+            local error=$(printf "%s" "$response" | jq -r '.error.message // empty' 2>/dev/null)
+            if [[ -n "$error" ]]; then
+                echo "API Error: $error"
+            else
+                echo "Error: Unable to parse response"
+            fi
+            return 1
+        fi
+        printf "%s" "$result"
+    else
+        # Fallback: concatenate every "text" field in the response.
+        local result=$(printf "%s" "$response" | perl -0777 -ne 'while (/"text":\s*"((?:[^"\\]|\\.)*)"/g) { $t .= $1 } END { print $t if defined $t }' 2>/dev/null)
+        if [[ -z "$result" ]]; then
+            echo "Error: Unable to parse response (install jq for better reliability)"
+            return 1
+        fi
+        # Unescape JSON string escapes.
+        result=$(printf "%s" "$result" | perl -0777 -pe 's/\\n/\n/g; s/\\t/\t/g; s/\\r/\r/g; s/\\"/"/g; s/\\\\/\\/g')
+        printf "%s" "$result"
+    fi
+}

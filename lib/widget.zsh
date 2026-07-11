@@ -5,6 +5,19 @@
 # Custom widget to intercept Enter key
 _zsh_ai_accept_line() {
     local trigger="${ZSH_AI_TRIGGER:-# }"
+    local agent_trigger="${ZSH_AI_AGENT_TRIGGER:-#! }"
+
+    # Agent trigger (checked first, since "#! " also starts with "# "): hand off
+    # to `zsh-ai --agent` as a normal command so the scrolling loop runs outside
+    # ZLE with full terminal access for confirmations.
+    if [[ "$BUFFER" == "$agent_trigger"* && "$BUFFER" != *$'\n'* ]]; then
+        local query="${BUFFER#"$agent_trigger"}"
+        if [[ -n "${query// /}" ]]; then
+            BUFFER="zsh-ai --agent ${(q)query}"
+        fi
+        zle .accept-line
+        return
+    fi
 
     # Check if the line starts with the configured trigger and handle multiline input
     if [[ "$BUFFER" == "$trigger"* ]]; then

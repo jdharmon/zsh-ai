@@ -91,6 +91,38 @@ $ find . -type f -size +50M -mtime -7
 
 The command is pushed into your prompt with `print -z`, ready to edit or run.
 
+### Agent Mode
+
+The two modes above generate a single command for you to run. **Agent mode** goes
+further: the model runs commands itself in a loop, reads their output, and keeps
+going until the task is done — you approve each command before it runs.
+
+Launch it inline with `#! `, or call it directly:
+
+```bash
+$ #! how many zsh files are in lib and how many lines total
+$ zsh-ai --agent "which process is listening on port 3000, then show its memory use"
+```
+
+For each step the model proposes a command and waits:
+
+```
+▶ run this command?
+    lsof -i :3000 -sTCP:LISTEN
+[y]es / [n]o / [a]lways:
+```
+
+- `y` runs it, `n` declines (the model is told and can try another approach), `a`
+  approves every remaining command this session.
+- When the model has an answer, it replies in plain text and the loop ends.
+
+Notes and limits:
+
+- Agent mode currently supports the **`gemini`** provider (`ZSH_AI_PROVIDER=gemini`).
+- Each command runs in a **fresh shell** — `cd` and environment changes do not
+  persist between steps, so the model chains dependent steps in one command.
+- Interactive programs (`vim`, `less`, `ssh`) can't be driven and will time out.
+
 ## Configuration
 
 Switch providers with `ZSH_AI_PROVIDER`:
@@ -121,6 +153,15 @@ export ZSH_AI_TRIGGER=",,"
 
 # Disable the inline hook entirely; only `zsh-ai "..."` stays active
 export ZSH_AI_COMMENT_HOOK="false"
+```
+
+Tune [agent mode](#agent-mode):
+
+```bash
+export ZSH_AI_AGENT_TRIGGER="#! "    # inline prefix that launches the agent
+export ZSH_AI_AGENT_MAX_STEPS=15     # max commands before the loop stops
+export ZSH_AI_AGENT_TIMEOUT=30       # per-command timeout in seconds
+export ZSH_AI_AGENT_MAX_OUTPUT=4096  # max bytes of output fed back to the model
 ```
 
 ## Docs

@@ -83,6 +83,21 @@ Ubuntu or Debian:
 sudo apt-get install jq
 ```
 
+## Agent Mode Issues
+
+**"agent mode currently supports the 'gemini' provider only"** — agent mode
+(`#! ` or `zsh-ai --agent`) needs `ZSH_AI_PROVIDER=gemini` and `GEMINI_API_KEY`
+set. Other providers fall back to the single-command modes.
+
+**A command hangs, then reports `[exit 124]`** — that command hit
+`ZSH_AI_AGENT_TIMEOUT` (default 30s). Interactive programs (`vim`, `less`,
+`ssh`, `top`) can't be driven by the agent and will always time out; ask for a
+non-interactive alternative, or raise the timeout for legitimately slow commands.
+
+**A later step "forgot" a `cd` or exported variable** — each command runs in a
+fresh shell, so state does not persist between steps. This is expected; the agent
+is prompted to chain dependent steps into a single command (`cd dir && ...`).
+
 ## Still Stuck
 
 Check the active provider and model:
