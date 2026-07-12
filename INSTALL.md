@@ -211,9 +211,9 @@ $ tar -xvf backup.tar.gz
 $ ?? what flags did I use?
 ```
 
-**tmux required**
+**tmux or herdr required**
 
-`??` reads the last command's output directly from the tmux pane buffer. Run your shell inside a tmux session to use this feature.
+`??` reads the last command's output directly from the terminal pane buffer, so it needs a supported multiplexer. Run your shell inside a **tmux** session, or inside a **[herdr](https://herdr.dev)** pane (detected via `HERDR_ENV=1`), to use this feature. When both are present, tmux is used. `jq` is optional — the herdr metric is parsed with `jq` when available and falls back to `perl` otherwise.
 
 ## Prompt Preferences
 

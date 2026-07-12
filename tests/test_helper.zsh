@@ -203,6 +203,9 @@ teardown_test_env() {
     unset ZSH_AI_COMMENT_HOOK
     unset ZSH_AI_TEST_MODE
     unset TMUX
+    unset HERDR_ENV
+    unset HERDR_PANE_ID
+    unset HERDR_ACTIVE_PANE_ID
 }
 
 # Assert string contains

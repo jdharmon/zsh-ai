@@ -91,9 +91,9 @@ If `??` produces no explanation, the most likely causes are:
 
 2. **API error** — Same as any other trigger; check your API key and provider config.
 
-### `??` doesn't work outside tmux
+### `??` doesn't work outside tmux or herdr
 
-`??` reads command output from the tmux pane buffer and requires a tmux session. Run your shell inside tmux to use this feature.
+`??` reads command output from the terminal pane buffer and requires a supported multiplexer. Run your shell inside **tmux**, or inside a **[herdr](https://herdr.dev)** pane (detected via `HERDR_ENV=1`), to use this feature. In a plain terminal it prints `?? requires tmux or herdr`.
 
 ## Still Stuck
 

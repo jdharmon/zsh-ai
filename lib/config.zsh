@@ -24,6 +24,18 @@
 : ${ZSH_AI_COMMENT_HOOK:="true"}  # Set to false/off/no/0 to disable the inline trigger widget entirely
 : ${ZSH_AI_TRIGGER:="# "}  # Prompt prefix that triggers AI (e.g. ",," instead of "# ")
 
+# Active output-capture backend for ??: "tmux", "herdr", or "" (none).
+# tmux wins when both are present (innermost multiplexer reads the real pane).
+# herdr injects HERDR_PANE_ID into each managed pane's shell (HERDR_ACTIVE_* only
+# reaches custom-command invocations, not the pane shell); accept either.
+_zsh_ai_mux_backend() {
+    if [[ -n "$TMUX" ]]; then
+        echo "tmux"
+    elif [[ "${HERDR_ENV:-}" == "1" && -n "${HERDR_PANE_ID:-${HERDR_ACTIVE_PANE_ID:-}}" ]]; then
+        echo "herdr"
+    fi
+}
+
 # Return 0 if the inline trigger widget should be enabled, 1 otherwise
 _zsh_ai_comment_hook_enabled() {
     case "${ZSH_AI_COMMENT_HOOK:l}" in

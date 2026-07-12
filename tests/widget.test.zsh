@@ -805,6 +805,164 @@ test_question_prefix_buffer_cleared_on_error() {
 
 # Run tests
 echo "Running widget tests..."
+test_mux_backend_detects_tmux() {
+    setup_test_env
+    export TMUX="fake-session"
+    assert_equals "$(_zsh_ai_mux_backend)" "tmux"
+    teardown_test_env
+}
+
+test_mux_backend_detects_herdr() {
+    setup_test_env
+    unset TMUX
+    export HERDR_ENV="1"
+    export HERDR_PANE_ID="w3:p7"
+    assert_equals "$(_zsh_ai_mux_backend)" "herdr"
+    teardown_test_env
+}
+
+test_mux_backend_prefers_tmux_over_herdr() {
+    setup_test_env
+    export TMUX="fake-session"
+    export HERDR_ENV="1"
+    export HERDR_PANE_ID="w3:p7"
+    assert_equals "$(_zsh_ai_mux_backend)" "tmux"
+    teardown_test_env
+}
+
+test_mux_backend_empty_when_neither() {
+    setup_test_env
+    unset TMUX HERDR_ENV HERDR_PANE_ID
+    assert_equals "$(_zsh_ai_mux_backend)" ""
+    teardown_test_env
+}
+
+test_herdr_scroll_parses_metric() {
+    setup_test_env
+    export HERDR_PANE_ID="w3:p7"
+    herdr() {
+        [[ "$1 $2" == "pane get" ]] && \
+            echo '{"id":"cli:pane:get","result":{"pane":{"pane_id":"w3:p7","scroll":{"max_offset_from_bottom":139,"offset_from_bottom":0,"viewport_rows":45}},"type":"pane_info"}}'
+    }
+    # Uses jq when present, else perl; both must yield the same result
+    assert_equals "$(_zsh_ai_herdr_scroll)" "139 45"
+    unfunction herdr
+    teardown_test_env
+}
+
+test_herdr_scroll_perl_fallback_when_no_jq() {
+    setup_test_env
+    export HERDR_PANE_ID="w3:p7"
+    herdr() {
+        echo '{"result":{"pane":{"scroll":{"max_offset_from_bottom":139,"offset_from_bottom":0,"viewport_rows":45}}}}'
+    }
+    # Force the perl branch by making `command -v jq` fail (jq stays optional)
+    command() {
+        [[ "$1" == "-v" && "$2" == "jq" ]] && return 1
+        builtin command "$@"
+    }
+    assert_equals "$(_zsh_ai_herdr_scroll)" "139 45"
+    unfunction herdr
+    unfunction command
+    teardown_test_env
+}
+
+test_capture_output_herdr_reads_delta_window() {
+    setup_test_env
+    unset TMUX
+    export HERDR_ENV="1"
+    export HERDR_PANE_ID="w3:p7"
+    herdr() {
+        if [[ "$1 $2" == "pane get" ]]; then
+            echo '{"result":{"pane":{"scroll":{"max_offset_from_bottom":139,"offset_from_bottom":0,"viewport_rows":45}}}}'
+        elif [[ "$1 $2" == "pane read" ]]; then
+            printf 'cat: foo.txt: No such file or directory\n'
+        fi
+    }
+    local out="$(_zsh_ai_capture_output 100)"
+    assert_contains "$out" "No such file or directory"
+    unfunction herdr
+    teardown_test_env
+}
+
+test_capture_output_herdr_falls_back_when_no_metric() {
+    setup_test_env
+    unset TMUX
+    export HERDR_ENV="1"
+    export HERDR_PANE_ID="w3:p7"
+    herdr() {
+        # pane get returns an error (no scroll) -> metric empty -> fixed window
+        if [[ "$1 $2" == "pane get" ]]; then
+            echo '{"error":{"code":"pane_not_found","message":"x"}}'
+        elif [[ "$1 $2" == "pane read" ]]; then
+            printf 'fallback output line\n'
+        fi
+    }
+    local out="$(_zsh_ai_capture_output 0)"
+    assert_contains "$out" "fallback output line"
+    unfunction herdr
+    teardown_test_env
+}
+
+test_double_question_works_under_herdr() {
+    setup_test_env
+    export ZSH_AI_PROVIDER="anthropic"
+    export ANTHROPIC_API_KEY="test-key"
+
+    # herdr pane instead of tmux passes the ?? guard
+    unset TMUX
+    export HERDR_ENV="1"
+    export HERDR_PANE_ID="w3:p7"
+    _ZSH_AI_LAST_CMD="git pussh origin main"
+    _ZSH_AI_LAST_EXIT=128
+    _ZSH_AI_LAST_OUTPUT=""
+
+    mock_command "kill" "" 1
+    mktemp() { echo "/tmp/test.tmp" }
+    mock_command "cat" 'FIX: git push origin main /// You had a typo: "pussh" should be "push".' 0
+    mock_command "rm" "" 0
+
+    local RESET_PROMPT_CALLED=0
+    zle() {
+        case "$1" in
+            "reset-prompt") RESET_PROMPT_CALLED=1 ;;
+        esac
+    }
+
+    BUFFER="??"
+    CURSOR=0
+    _zsh_ai_accept_line
+
+    assert_equals "$BUFFER" "git push origin main"
+    assert_equals "$RESET_PROMPT_CALLED" "1"
+
+    teardown_test_env
+}
+
+test_double_question_requires_a_multiplexer() {
+    setup_test_env
+    export ZSH_AI_PROVIDER="anthropic"
+    export ANTHROPIC_API_KEY="test-key"
+
+    unset TMUX HERDR_ENV HERDR_PANE_ID
+    _ZSH_AI_LAST_CMD="git status"
+
+    local printed_output=""
+    print() { printed_output="$printed_output$@\n" }
+    local EXPLAIN_CALLED=0
+    _zsh_ai_execute_explain() { EXPLAIN_CALLED=1 }
+    zle() { : }
+
+    BUFFER="??"
+    _zsh_ai_accept_line
+
+    assert_equals "$BUFFER" ""
+    assert_equals "$EXPLAIN_CALLED" "0"
+    assert_contains "$printed_output" "requires tmux or herdr"
+
+    teardown_test_env
+}
+
 run_test "Widget initialization registers precmd hook" test_widget_initialization_registers_precmd_hook
 run_test "Widget init hook registers widget and removes itself" test_widget_init_hook_registers_widget_and_removes_itself
 run_test "Normal commands execute without AI processing" test_normal_commands_execute_without_ai_processing
@@ -829,4 +987,14 @@ run_test "?? handles missing previous command" test_double_question_handles_no_p
 run_test "preexec records last command" test_preexec_records_last_command
 run_test "precmd saves exit code when preexec ran" test_precmd_saves_exit_code_when_preexec_ran
 run_test "precmd skips update when no preexec ran" test_precmd_does_not_update_exit_code_without_preexec
+run_test "mux backend detects tmux" test_mux_backend_detects_tmux
+run_test "mux backend detects herdr" test_mux_backend_detects_herdr
+run_test "mux backend prefers tmux over herdr" test_mux_backend_prefers_tmux_over_herdr
+run_test "mux backend empty when neither" test_mux_backend_empty_when_neither
+run_test "herdr scroll parses metric" test_herdr_scroll_parses_metric
+run_test "herdr scroll perl fallback when no jq" test_herdr_scroll_perl_fallback_when_no_jq
+run_test "capture output herdr reads delta window" test_capture_output_herdr_reads_delta_window
+run_test "capture output herdr falls back when no metric" test_capture_output_herdr_falls_back_when_no_metric
+run_test "?? works under herdr" test_double_question_works_under_herdr
+run_test "?? requires tmux or herdr" test_double_question_requires_a_multiplexer
 finish_tests

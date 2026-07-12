@@ -7,32 +7,74 @@ _ZSH_AI_LAST_CMD=""
 _ZSH_AI_LAST_EXIT=0
 _ZSH_AI_LAST_OUTPUT=""
 _ZSH_AI_PREEXEC_RUNNING=0
-_ZSH_AI_TMUX_HISTORY_BEFORE=0
+_ZSH_AI_CAPTURE_BEFORE=0
 
-# preexec: record command and tmux history size
-_zsh_ai_preexec() {
-    _ZSH_AI_LAST_CMD="$1"
-    _ZSH_AI_PREEXEC_RUNNING=1
-    if [[ -n "$TMUX" ]]; then
-        _ZSH_AI_TMUX_HISTORY_BEFORE=$(tmux display-message -p '#{history_size}' 2>/dev/null)
+# Echo "<max_offset_from_bottom> <viewport_rows>" for the current herdr pane.
+# max_offset_from_bottom is the scrollback-depth analog of tmux's #{history_size};
+# viewport_rows is the #{pane_height} analog. Parse with jq when present, else perl
+# (jq stays optional; perl is a hard dependency).
+_zsh_ai_herdr_scroll() {
+    local pane="${HERDR_PANE_ID:-$HERDR_ACTIVE_PANE_ID}"
+    local json
+    json=$(herdr pane get "$pane" 2>/dev/null) || return 1
+    if command -v jq >/dev/null 2>&1; then
+        echo "$json" | jq -r '.result.pane.scroll | "\(.max_offset_from_bottom) \(.viewport_rows)"' 2>/dev/null
+    else
+        echo "$json" | perl -ne 'print "$1 $2\n" if /"max_offset_from_bottom":(\d+).*?"viewport_rows":(\d+)/s'
     fi
 }
 
-# precmd: save exit code and capture output via tmux pane buffer
+# preexec: snapshot the scrollback baseline for the active capture backend
+_zsh_ai_capture_baseline() {
+    case "$(_zsh_ai_mux_backend)" in
+        tmux)  tmux display-message -p '#{history_size}' 2>/dev/null ;;
+        herdr) _zsh_ai_herdr_scroll 2>/dev/null | cut -d' ' -f1 ;;
+    esac
+}
+
+# precmd: return up to ~50 lines of the last command's output for the active backend.
+# $1 is the baseline captured in preexec.
+_zsh_ai_capture_output() {
+    local before="$1" n
+    case "$(_zsh_ai_mux_backend)" in
+        tmux)
+            local after height
+            after=$(tmux display-message -p '#{history_size}' 2>/dev/null)
+            height=$(tmux display-message -p '#{pane_height}' 2>/dev/null)
+            n=$(( after - before + height ))
+            tmux capture-pane -p -S -${n} 2>/dev/null | head -50
+            ;;
+        herdr)
+            local metric after rows
+            metric=$(_zsh_ai_herdr_scroll 2>/dev/null)
+            after=${metric%% *}; rows=${metric##* }
+            if [[ -n "$after" && -n "$rows" && "$after" == <-> && "$rows" == <-> ]]; then
+                n=$(( after - before + rows ))
+                (( n < rows )) && n=$rows      # saturation floor -> visible screen
+                (( n > 200 )) && n=200         # token-budget ceiling
+                (( n <= 0 )) && n=50
+            else
+                n=50                            # metric unavailable -> fixed window
+            fi
+            herdr pane read "${HERDR_PANE_ID:-$HERDR_ACTIVE_PANE_ID}" --source recent --lines "$n" --format text 2>/dev/null | tail -200
+            ;;
+    esac
+}
+
+# preexec: record command and snapshot the scrollback baseline
+_zsh_ai_preexec() {
+    _ZSH_AI_LAST_CMD="$1"
+    _ZSH_AI_PREEXEC_RUNNING=1
+    _ZSH_AI_CAPTURE_BEFORE=$(_zsh_ai_capture_baseline)
+}
+
+# precmd: save exit code and capture output from the active backend's pane buffer
 _zsh_ai_precmd() {
     local last_exit=$?
     if [[ "$_ZSH_AI_PREEXEC_RUNNING" == "1" ]]; then
         _ZSH_AI_LAST_EXIT=$last_exit
         _ZSH_AI_PREEXEC_RUNNING=0
-        _ZSH_AI_LAST_OUTPUT=""
-        if [[ -n "$TMUX" ]]; then
-            local history_after
-            history_after=$(tmux display-message -p '#{history_size}' 2>/dev/null)
-            local pane_height
-            pane_height=$(tmux display-message -p '#{pane_height}' 2>/dev/null)
-            local new_lines=$(( history_after - _ZSH_AI_TMUX_HISTORY_BEFORE + pane_height ))
-            _ZSH_AI_LAST_OUTPUT=$(tmux capture-pane -p -S -${new_lines} 2>/dev/null | head -50)
-        fi
+        _ZSH_AI_LAST_OUTPUT=$(_zsh_ai_capture_output "$_ZSH_AI_CAPTURE_BEFORE")
     fi
 }
 
@@ -42,9 +84,9 @@ _zsh_ai_accept_line() {
 
     # Check for ?? trigger (explain/fix last command)
     if [[ "$BUFFER" == '??' ]] || [[ "${BUFFER:0:3}" == '?? ' ]]; then
-        if [[ -z "$TMUX" ]]; then
+        if [[ -z "$(_zsh_ai_mux_backend)" ]]; then
             echo ""
-            print -P "%F{yellow}?? requires tmux — run your shell inside a tmux session to use this feature.%f"
+            print -P "%F{yellow}?? requires tmux or herdr — run your shell inside a tmux or herdr session to use this feature.%f"
             echo ""
             BUFFER=""
             CURSOR=0

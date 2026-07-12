@@ -131,7 +131,7 @@ $ ?? what did that just delete?
 Deleted all .log files in the current directory tree that were last modified more than 30 days ago.
 ```
 
-`??` requires running your shell inside a tmux session so zsh-ai can read the previous command's output.
+`??` requires running your shell inside a **tmux** or **herdr** session so zsh-ai can read the previous command's output.
 
 ## Configuration
 
