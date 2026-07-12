@@ -83,6 +83,18 @@ Ubuntu or Debian:
 sudo apt-get install jq
 ```
 
+### `??` shows no output or explanation
+
+If `??` produces no explanation, the most likely causes are:
+
+1. **No previous command recorded** — `??` relies on the `preexec` hook tracking the last command. This hook is registered on the first prompt after the plugin loads. If you type `??` before running any other command, there's nothing to explain.
+
+2. **API error** — Same as any other trigger; check your API key and provider config.
+
+### `??` doesn't work outside tmux
+
+`??` reads command output from the tmux pane buffer and requires a tmux session. Run your shell inside tmux to use this feature.
+
 ## Still Stuck
 
 Check the active provider and model:

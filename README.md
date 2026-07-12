@@ -6,11 +6,17 @@
 
 The hard part of the terminal usually is not knowing what to do. It is remembering the exact flags, quoting, and pipeline shape.
 
-`zsh-ai` turns a zsh comment into a command. Type `#`, describe the job, press Enter, and the generated command appears in your prompt.
+`zsh-ai` turns a zsh comment into a command. Type `#`, describe the job, press Enter, and the generated command appears in your prompt. Made a mistake? Type `??` and let AI explain or fix it.
 
 ```bash
 $ # find files larger than 100mb changed this week
 $ find . -type f -size +100M -mtime -7
+
+$ git pussh origin main
+zsh: command not found: pussh
+$ ??
+You had a typo: "pussh" should be "push".
+$ git push origin main    # ← fixed command, ready to run
 ```
 
 It does not run the command for you. You read it first, edit it if needed, then press Enter again.
@@ -20,6 +26,8 @@ It does not run the command for you. You read it first, edit it if needed, then 
 Most command help breaks your flow: search result, forum thread, copied snippet, little edits, fingers crossed.
 
 `zsh-ai` stays on the command line. It sends useful context with your request, including project type, nearby files, git state, and OS. That means "run tests" can become the right command for the directory you are already in.
+
+It also explains and fixes errors: type `??` after any command to get an explanation, and if the error was a typo or wrong flag, the fix appears in your buffer ready to run.
 
 It is also small by design: zsh plus `curl` and `perl`, no Node runtime, no Python runtime. `jq` is optional.
 
@@ -90,6 +98,40 @@ $ find . -type f -size +50M -mtime -7
 ```
 
 The command is pushed into your prompt with `print -z`, ready to edit or run.
+
+### Ask a Question
+
+Type `?`, then a plain-English question, to get an answer printed above your prompt without generating a command:
+
+```bash
+$ ? what is the difference between git reset and git revert
+```
+
+### Explain and Fix (`??`)
+
+After running a command, type `??` to get an explanation. If the error is a typo or bad argument, the corrected command is placed in your buffer, ready to run.
+
+```bash
+# Fix a typo
+$ git pussh origin main
+zsh: command not found: pussh
+$ ??
+You had a typo: "pussh" should be "push".
+$ git push origin main
+
+# Explain a failed command
+$ tar -xvf archive.tgz
+tar: archive.tgz: Cannot open: No such file or directory
+$ ?? why did this fail
+The file archive.tgz does not exist in the current directory.
+
+# Add your own question
+$ find . -name '*.log' -mtime +30 -delete
+$ ?? what did that just delete?
+Deleted all .log files in the current directory tree that were last modified more than 30 days ago.
+```
+
+`??` requires running your shell inside a tmux session so zsh-ai can read the previous command's output.
 
 ## Configuration
 

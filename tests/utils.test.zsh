@@ -467,6 +467,121 @@ test_get_system_prompt_with_empty_extension() {
     teardown_test_env
 }
 
+test_explain_system_prompt_contains_fix_format() {
+    setup_test_env
+
+    local prompt=$(_zsh_ai_get_explain_system_prompt)
+
+    assert_contains "$prompt" "FIX:"
+    assert_contains "$prompt" "///"
+    assert_contains "$prompt" "fixable"
+    assert_contains "$prompt" "SINGLE LINE"
+
+    teardown_test_env
+}
+
+test_system_prompt_override_bypasses_normal_prompt() {
+    setup_test_env
+
+    _ZSH_AI_SYSTEM_PROMPT_OVERRIDE="custom override prompt"
+    local prompt=$(_zsh_ai_get_system_prompt "some context")
+    unset _ZSH_AI_SYSTEM_PROMPT_OVERRIDE
+
+    assert_equals "$prompt" "custom override prompt"
+
+    teardown_test_env
+}
+
+test_execute_explain_returns_error_when_no_last_command() {
+    setup_test_env
+    export ZSH_AI_PROVIDER="anthropic"
+    export ANTHROPIC_API_KEY="test-key"
+
+    local output
+    output=$(_zsh_ai_execute_explain "" "0" "" "")
+    local result=$?
+
+    assert_equals "$result" "1"
+    assert_contains "$output" "Error: No previous command found"
+
+    teardown_test_env
+}
+
+test_execute_explain_includes_command_and_exit_code() {
+    setup_test_env
+    export ZSH_AI_PROVIDER="anthropic"
+    export ANTHROPIC_API_KEY="test-key"
+
+    # _zsh_ai_query runs in a command substitution, so echo the received query
+    # back out and capture it from the function's output.
+    _zsh_ai_query() {
+        echo "$1"
+    }
+
+    local captured_query
+    captured_query=$(_zsh_ai_execute_explain "git pussh" "128" "" "")
+
+    assert_contains "$captured_query" "git pussh"
+    assert_contains "$captured_query" "128"
+
+    teardown_test_env
+}
+
+test_execute_explain_includes_output_when_provided() {
+    setup_test_env
+    export ZSH_AI_PROVIDER="anthropic"
+    export ANTHROPIC_API_KEY="test-key"
+
+    _zsh_ai_query() {
+        echo "$1"
+    }
+
+    local captured_query
+    captured_query=$(_zsh_ai_execute_explain "cat foo.txt" "1" "cat: foo.txt: No such file or directory" "")
+
+    assert_contains "$captured_query" "cat foo.txt"
+    assert_contains "$captured_query" "No such file or directory"
+
+    teardown_test_env
+}
+
+test_execute_explain_includes_user_query_when_provided() {
+    setup_test_env
+    export ZSH_AI_PROVIDER="anthropic"
+    export ANTHROPIC_API_KEY="test-key"
+
+    _zsh_ai_query() {
+        echo "$1"
+    }
+
+    local captured_query
+    captured_query=$(_zsh_ai_execute_explain "ls" "0" "" "what does -lh mean")
+
+    assert_contains "$captured_query" "what does -lh mean"
+
+    teardown_test_env
+}
+
+test_execute_explain_uses_explain_system_prompt() {
+    setup_test_env
+    export ZSH_AI_PROVIDER="anthropic"
+    export ANTHROPIC_API_KEY="test-key"
+
+    local used_prompt=""
+    _zsh_ai_query() {
+        # Capture what system prompt override was active
+        used_prompt="${_ZSH_AI_SYSTEM_PROMPT_OVERRIDE:-}"
+        echo "Some explanation."
+    }
+
+    _zsh_ai_execute_explain "ls" "0" "" "" >/dev/null
+
+    # Override should be cleared after the call
+    assert_equals "${_ZSH_AI_SYSTEM_PROMPT_OVERRIDE:-}" ""
+
+    teardown_test_env
+}
+
 # Run tests
 echo "Running utils tests..."
 run_test "Routes to Anthropic provider when configured" test_routes_to_anthropic_provider
@@ -489,4 +604,11 @@ run_test "System prompt includes custom extension when set" test_get_system_prom
 run_test "System prompt works without extension" test_get_system_prompt_without_extension
 run_test "System prompt handles multiline extension" test_get_system_prompt_with_multiline_extension
 run_test "System prompt handles empty extension" test_get_system_prompt_with_empty_extension
+run_test "Explain system prompt contains FIX: format" test_explain_system_prompt_contains_fix_format
+run_test "System prompt override bypasses normal prompt" test_system_prompt_override_bypasses_normal_prompt
+run_test "execute_explain returns error with no last command" test_execute_explain_returns_error_when_no_last_command
+run_test "execute_explain includes command and exit code" test_execute_explain_includes_command_and_exit_code
+run_test "execute_explain includes output when provided" test_execute_explain_includes_output_when_provided
+run_test "execute_explain includes user query when provided" test_execute_explain_includes_user_query_when_provided
+run_test "execute_explain clears system prompt override after use" test_execute_explain_uses_explain_system_prompt
 finish_tests

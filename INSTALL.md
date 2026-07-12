@@ -193,7 +193,27 @@ export ZSH_AI_OLLAMA_URL="http://localhost:11434"
 export ZSH_AI_MISTRAL_URL="https://api.mistral.ai/v1/chat/completions"
 export ZSH_AI_GROK_URL="https://api.x.ai/v1/chat/completions"
 export ZSH_AI_QWEN_URL="https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+
 ```
+
+## Explain & Fix (`??`)
+
+The `??` trigger sends your last command, its exit code, and an optional question to the AI. If the error was a user mistake (typo, wrong flag, bad syntax), the corrected command replaces your buffer. Otherwise, an explanation is printed.
+
+```bash
+# After any command, type ?? to explain or fix it
+$ git pussh origin main
+$ ??
+# → prints explanation, buffer becomes: git push origin main
+
+# Add a question for more context
+$ tar -xvf backup.tar.gz
+$ ?? what flags did I use?
+```
+
+**tmux required**
+
+`??` reads the last command's output directly from the tmux pane buffer. Run your shell inside a tmux session to use this feature.
 
 ## Prompt Preferences
 

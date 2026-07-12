@@ -202,6 +202,7 @@ teardown_test_env() {
     unset ZSH_AI_TRIGGER
     unset ZSH_AI_COMMENT_HOOK
     unset ZSH_AI_TEST_MODE
+    unset TMUX
 }
 
 # Assert string contains
