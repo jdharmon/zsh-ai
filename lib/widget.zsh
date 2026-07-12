@@ -81,6 +81,34 @@ _zsh_ai_precmd() {
 # Custom widget to intercept Enter key
 _zsh_ai_accept_line() {
     local trigger="${ZSH_AI_TRIGGER:-# }"
+    local agent_trigger="${ZSH_AI_AGENT_TRIGGER:-#! }"
+
+    # Agent trigger (checked first, since "#! " also starts with "# "): run the
+    # agent loop in place. We drop below the typed "#! ..." line and drive the
+    # loop directly, so the internal `zsh-ai --agent` invocation is never shown.
+    if [[ "$BUFFER" == "$agent_trigger"* && "$BUFFER" != *$'\n'* ]]; then
+        local query="${BUFFER#"$agent_trigger"}"
+
+        # Empty query: treat "#! " like a normal (comment) line.
+        if [[ -z "${query// /}" ]]; then
+            zle .accept-line
+            return
+        fi
+
+        # Keep the typed line in history and on screen, then move below it.
+        print -s -- "$BUFFER"
+        print -rn -- $'\n'
+
+        if _zsh_ai_agent_available; then
+            _zsh_ai_agent_loop "$query"
+        fi
+
+        # Clear the editor and draw a fresh prompt below the agent output.
+        BUFFER=""
+        CURSOR=0
+        zle reset-prompt
+        return
+    fi
 
     # Check for ?? trigger (explain/fix last command)
     if [[ "$BUFFER" == '??' ]] || [[ "${BUFFER:0:3}" == '?? ' ]]; then

@@ -7,6 +7,7 @@ source "${0:A:h}/test_helper.zsh"
 source "$PLUGIN_DIR/lib/config.zsh"
 source "$PLUGIN_DIR/lib/context.zsh"
 source "$PLUGIN_DIR/lib/utils.zsh"
+source "$PLUGIN_DIR/lib/agent.zsh"
 source "$PLUGIN_DIR/lib/widget.zsh"
 
 # Test functions
@@ -803,6 +804,67 @@ test_question_prefix_buffer_cleared_on_error() {
     teardown_test_env
 }
 
+test_agent_trigger_runs_loop_with_query() {
+    setup_test_env
+    export ZSH_AI_PROVIDER="gemini"
+    export GEMINI_API_KEY="test-key"
+
+    # Capture how the loop is invoked, and keep it from doing real work.
+    local LOOP_QUERY="__unset__"
+    _zsh_ai_agent_available() { return 0; }
+    _zsh_ai_agent_loop() { LOOP_QUERY="$1"; }
+    # Silence the in-widget newline print.
+    functions[print]=': '
+
+    local RESET_PROMPT_CALLED=0
+    zle() {
+        case "$1" in
+            "reset-prompt") RESET_PROMPT_CALLED=1 ;;
+        esac
+    }
+
+    BUFFER="#! find large files"
+    CURSOR=0
+    _zsh_ai_accept_line
+
+    unfunction print 2>/dev/null
+
+    # The loop ran with the trigger stripped, the buffer was cleared, and the
+    # internal "zsh-ai --agent" wrapper was never placed in the buffer.
+    assert_equals "$LOOP_QUERY" "find large files"
+    assert_equals "$BUFFER" ""
+    assert_equals "$RESET_PROMPT_CALLED" "1"
+
+    source "$PLUGIN_DIR/lib/agent.zsh"
+    teardown_test_env
+}
+
+test_agent_trigger_empty_query_is_plain_line() {
+    setup_test_env
+    export ZSH_AI_PROVIDER="gemini"
+    export GEMINI_API_KEY="test-key"
+
+    local LOOP_CALLED=0
+    _zsh_ai_agent_loop() { LOOP_CALLED=1; }
+
+    local ACCEPT_LINE_CALLED=0
+    zle() {
+        case "$1" in
+            ".accept-line") ACCEPT_LINE_CALLED=1 ;;
+        esac
+    }
+
+    # "#! " with no query is just a comment line, not an agent launch.
+    BUFFER="#! "
+    _zsh_ai_accept_line
+
+    assert_equals "$LOOP_CALLED" "0"
+    assert_equals "$ACCEPT_LINE_CALLED" "1"
+
+    source "$PLUGIN_DIR/lib/agent.zsh"
+    teardown_test_env
+}
+
 # Run tests
 echo "Running widget tests..."
 test_mux_backend_detects_tmux() {
@@ -997,4 +1059,6 @@ run_test "capture output herdr reads delta window" test_capture_output_herdr_rea
 run_test "capture output herdr falls back when no metric" test_capture_output_herdr_falls_back_when_no_metric
 run_test "?? works under herdr" test_double_question_works_under_herdr
 run_test "?? requires tmux or herdr" test_double_question_requires_a_multiplexer
+run_test "Agent trigger runs loop with stripped query" test_agent_trigger_runs_loop_with_query
+run_test "Agent trigger with empty query is a plain line" test_agent_trigger_empty_query_is_plain_line
 finish_tests
