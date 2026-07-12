@@ -64,8 +64,17 @@ _zsh_ai_agent_confirm() {
     print -r -- "    $cmd"
     print -Pn "%F{yellow}[y]es / [n]o / [a]lways: %f"
 
+    # Read the keypress from the controlling terminal. Inside a zle widget the
+    # shell's fd 0 is not guaranteed to be the tty (some launchers and
+    # multiplexers leave it pointing elsewhere); reading fd 0 then returns
+    # immediately and rejects every command. Prefer /dev/tty, and fall back to
+    # fd 0 when there is no controlling terminal (e.g. the test harness).
     local ans
-    read -k 1 -u 0 ans
+    if { : < /dev/tty } 2>/dev/null; then
+        read -k 1 ans < /dev/tty
+    else
+        read -k 1 -u 0 ans
+    fi
     echo ""
 
     case "$ans" in
